@@ -1,0 +1,920 @@
+</html><!DOCTYPE html>
+<html lang="en">
+<!--
+  Echo WebShare Platform
+  Copyright © 2025 David Ayobami Okeleye. All Rights Reserved.
+  
+  This software is proprietary and confidential.
+  Unauthorized copying, distribution, modification, or use is strictly prohibited.
+  
+  For licensing inquiries: okeleyetadd@gmail.com
+  GitHub: https://github.com/Y2cipher
+  LinkedIn: https://www.linkedin.com/in/david-ayobami-okeleye-8aabb3242
+-->
+<head>
+  <meta name="description" content="Echo WebShare - Real-time screen sharing using WebRTC.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8">
+  <title>Echo 〰️ WebShare</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; min-height: 100vh; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+      background: linear-gradient(135deg, #c9d6a3 0%, #a8b88a 100%);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 24px; position: relative; overflow-x: hidden;
+    }
+    body::before {
+      content: 'echo   echo   echo   echo   echo   echo';
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      pointer-events: none; z-index: 0;
+      font-family: "Brush Script MT", cursive; font-size: 26px;
+      opacity: 0.15; color: rgba(110, 130, 80, 0.18);
+      word-spacing: 48px; line-height: 2.4; padding: 40px; overflow: visible;
+    }
+
+    .container {
+      width: 100%; max-width: 1200px; border-radius: 16px; overflow: visible;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.25); background: white;
+      display: grid; grid-template-columns: 330px 1fr; gap: 0; position: relative; z-index: 1;
+    }
+
+    /* Sound wave motifs */
+    .echo-motif {
+      position: absolute; font-size: 20px; opacity: 0.25; pointer-events: none; z-index: 0;
+    }
+    .echo-1 { top: 15px; right: 15px; font-size: 24px; }
+    .echo-2 { bottom: 80px; left: 20px; font-size: 18px; transform: rotate(-15deg); }
+    .echo-3 { top: 50%; right: 25px; font-size: 16px; transform: rotate(10deg); }
+    .echo-4 { bottom: 150px; right: 60px; font-size: 14px; }
+    .echo-5 { top: 120px; left: 15px; font-size: 12px; transform: rotate(-5deg); }
+
+    .sidebar {
+      background: linear-gradient(180deg, rgba(255,255,255,0.95), rgba(245,245,250,0.95));
+      padding: 18px; display: flex; flex-direction: column; gap: 12px; min-height: 560px;
+      position: relative; overflow: hidden;
+    }
+
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand h1 { font-size: 20px; color: #333; }
+    .brand .emoji { font-size: 22px; }
+    .subtitle { font-family: monospace; color: #666; font-size: 13px; }
+
+    .menu { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+    .menu-btn {
+      text-align: left; padding: 12px; border-radius: 8px; border: 1px solid #eef0f5;
+      background: white; cursor: pointer; font-size: 14px; font-weight: 500;
+      display: flex; justify-content: space-between; align-items: center;
+      transition: all 0.2s ease;
+    }
+    .menu-btn:hover { background: #f8f9fc; }
+    .menu-btn[aria-expanded="true"] { background: #f0f7ff; border-color: #cfe6ff; }
+    .menu-btn .arrow { transition: transform 0.2s ease; }
+    .menu-btn[aria-expanded="true"] .arrow { transform: rotate(180deg); }
+
+    .menu-panel {
+      max-height: 0; overflow: hidden; transition: max-height 0.3s ease, padding 0.3s ease;
+      background: #f8fafc; border-radius: 8px; margin-top: -4px;
+    }
+    .menu-panel.open { max-height: 500px; padding: 12px; border: 1px solid #e6eef8; }
+
+    .controls { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+    .controls button {
+      padding: 10px 12px; border-radius: 8px; border: none; cursor: pointer;
+      font-weight: 600; font-size: 13px; transition: transform 0.1s, opacity 0.2s;
+    }
+    .controls button:hover { transform: scale(1.02); }
+    .controls button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+    #shareBtn { background: linear-gradient(135deg, #667eea, #764ba2); color: white; }
+    #pauseBtn { background: linear-gradient(135deg, #ffa726, #fb8c00); color: white; }
+    #resumeBtn { background: linear-gradient(135deg, #66bb6a, #43a047); color: white; }
+    #stopBtn { background: linear-gradient(135deg, #f093fb, #f5576c); color: white; }
+    #copyBtn { background: linear-gradient(135deg, #4facfe, #00f2fe); color: white; }
+    #joinBtn { background: linear-gradient(135deg, #43e97b, #38f9d7); color: white; }
+
+    .main { padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+
+    .connection-status {
+      padding: 10px; border-radius: 8px; background: #fff3cd;
+      border: 1px solid #ffd; color: #856404; text-align: center; font-size: 14px;
+    }
+    .connection-status.connected { background: #d4edda; color: #155724; border-color: #c3e6cb; }
+
+    .video-container {
+      background: #000; border-radius: 10px; min-height: 300px;
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden; position: relative;
+    }
+    video, audio { width: 100%; height: 100%; object-fit: contain; display: block; }
+    .status { position: absolute; color: #ddd; text-align: center; padding: 12px; }
+
+    .meta { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+    .viewers { background: #e8f5e9; padding: 8px 12px; border-radius: 8px; color: #2e7d32; font-weight: 700; }
+
+    .chat {
+      border-radius: 8px; border: 1px solid #eef0f5; padding: 10px;
+      max-height: 150px; overflow: auto; background: white;
+    }
+    .chat .msg { margin-bottom: 8px; }
+    .chat .msg .nick { font-weight: 700; font-size: 13px; color: #667eea; }
+    .chat-form { display: flex; gap: 8px; margin-top: 8px; }
+    .chat-form input {
+      flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #e6eef8; font-size: 14px;
+    }
+    .chat-form button {
+      padding: 10px 16px; border-radius: 8px; border: none;
+      background: #667eea; color: white; font-weight: 600; cursor: pointer;
+    }
+
+    .small { font-size: 12px; color: #666; }
+    .input-field {
+      padding: 10px; border-radius: 8px; border: 1px solid #e6eef8;
+      font-size: 14px; width: 100%; margin-top: 6px;
+    }
+
+    .file-share-section { margin-top: 8px; }
+    .file-share-section input[type="file"] { margin: 8px 0; font-size: 13px; }
+    .file-share-btn {
+      padding: 8px 14px; border-radius: 6px; border: none;
+      background: linear-gradient(135deg, #667eea, #764ba2); color: white;
+      font-size: 13px; cursor: pointer; font-weight: 500;
+    }
+
+    .shared-media-container {
+      margin-top: 12px; background: #1a1a2e; border-radius: 10px;
+      padding: 12px; display: none;
+    }
+    .shared-media-container.active { display: block; }
+    .shared-media-container video,
+    .shared-media-container audio {
+      width: 100%; border-radius: 8px; max-height: 250px;
+    }
+    .shared-media-label {
+      color: #aaa; font-size: 12px; margin-bottom: 8px; display: flex;
+      align-items: center; gap: 6px;
+    }
+
+    .developer-credit {
+      text-align: center; padding: 15px 12px; margin-top: 20px;
+      background: none; border: none; box-shadow: none;
+      font-style: italic; font-size: 11px;
+      color: rgba(45, 45, 40, 0.6); line-height: 1.5;
+      position: relative;
+    }
+    .developer-credit a {
+      color: rgba(40, 60, 40, 0.7); text-decoration: none; font-weight: 500;
+      border-bottom: 1px dashed rgba(40, 60, 40, 0.3); transition: 0.25s ease;
+    }
+    .developer-credit a:hover {
+      color: rgba(20, 40, 20, 0.9); border-bottom-color: rgba(10, 30, 10, 0.6);
+    }
+
+    .footer-dropdown {
+      position: relative; display: inline-block; margin-top: 8px;
+    }
+    .footer-toggle {
+      background: none; border: none; color: rgba(45, 45, 40, 0.5);
+      font-size: 11px; cursor: pointer; padding: 6px 10px;
+      border-radius: 4px; transition: 0.2s ease;
+    }
+    .footer-toggle:hover {
+      background: rgba(0, 0, 0, 0.03); color: rgba(45, 45, 40, 0.8);
+    }
+    .footer-menu {
+      position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+      background: rgba(255, 255, 255, 0.98); border: 1px solid rgba(0, 0, 0, 0.08);
+      border-radius: 8px; padding: 10px; margin-bottom: 5px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); display: none;
+      white-space: nowrap; z-index: 100;
+    }
+    .footer-menu.active { display: block; }
+    .footer-menu a {
+      display: block; padding: 6px 12px; color: rgba(40, 60, 40, 0.85);
+      text-decoration: none; font-size: 12px; border-radius: 4px;
+      transition: 0.15s ease; border: none;
+    }
+    .footer-menu a:hover {
+      background: rgba(102, 126, 234, 0.1); color: rgba(40, 60, 40, 1);
+    }
+
+    /* Mobile hamburger menu */
+    .mobile-header {
+      display: none; padding: 16px; background: white;
+      border-bottom: 1px solid #eee; justify-content: space-between; align-items: center;
+    }
+    .hamburger {
+      width: 28px; height: 20px; display: flex; flex-direction: column;
+      justify-content: space-between; cursor: pointer; z-index: 1001;
+    }
+    .hamburger span {
+      display: block; height: 3px; background: #333; border-radius: 2px;
+      transition: all 0.3s ease;
+    }
+    .hamburger.active span:nth-child(1) { transform: rotate(45deg) translate(5px, 5px); }
+    .hamburger.active span:nth-child(2) { opacity: 0; }
+    .hamburger.active span:nth-child(3) { transform: rotate(-45deg) translate(6px, -6px); }
+
+    .mobile-dropdown {
+      display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.5); z-index: 999;
+    }
+    .mobile-dropdown.active { display: block; }
+    .mobile-dropdown-content {
+      position: absolute; top: 60px; left: 0; right: 0;
+      background: white; max-height: calc(100vh - 60px); overflow-y: auto;
+      padding: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    }
+
+    @media (max-width: 900px) {
+      body { padding: 0; }
+      .container { grid-template-columns: 1fr; border-radius: 0; }
+      .sidebar { display: none; }
+      .mobile-header { display: flex; }
+      .main { order: 1; min-height: calc(100vh - 60px); }
+      .developer-credit { margin: 20px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <!-- Mobile Header -->
+  <div class="mobile-header">
+    <div class="brand">
+      <h1>Echo <span class="emoji">〰️</span></h1>
+    </div>
+    <div class="hamburger" id="hamburger">
+      <span></span><span></span><span></span>
+    </div>
+  </div>
+
+  <!-- Mobile Dropdown -->
+  <div class="mobile-dropdown" id="mobileDropdown">
+    <div class="mobile-dropdown-content">
+      <div id="mobileMenuContent"></div>
+    </div>
+  </div>
+
+  <!-- Sidebar (Desktop) -->
+  <aside class="sidebar" id="sidebarDesktop">
+    <!-- Sound wave motifs -->
+    <div class="echo-motif echo-1">〰️</div>
+    <div class="echo-motif echo-2">〰️</div>
+    <div class="echo-motif echo-3">〰️</div>
+    <div class="echo-motif echo-4">〰️</div>
+    <div class="echo-motif echo-5">〰️</div>
+
+    <div class="brand">
+      <div>
+        <h1>Echo <span class="emoji">〰️</span></h1>
+        <div class="subtitle">webshare</div>
+      </div>
+    </div>
+
+    <nav class="menu">
+      <button class="menu-btn" data-panel="panelShare">
+        ▶️ Screen & Media Share <span class="arrow">▼</span>
+      </button>
+      <div class="menu-panel" id="panelShare">
+        <div class="small">Share your screen or upload media files:</div>
+        <div class="file-share-section">
+          <label class="small">Upload video, audio, or document:</label>
+          <input id="fileInput" type="file" accept="video/*,audio/*,application/pdf,image/*">
+          <div id="fileInfo" class="small" style="margin:6px 0;"></div>
+          <button id="docShareBtn" class="file-share-btn">📤 Share to Room</button>
+        </div>
+      </div>
+
+      <button class="menu-btn" data-panel="panelChat">
+        💬 Chat <span class="arrow">▼</span>
+      </button>
+      <div class="menu-panel" id="panelChat">
+        <div class="small">Send messages to everyone in the room.</div>
+        <div id="chatBox" class="chat" style="margin-top:8px;"></div>
+        <div class="chat-form">
+          <input id="chatInput" placeholder="Type a message...">
+          <button id="chatSend">Send</button>
+        </div>
+      </div>
+
+      <button class="menu-btn" data-panel="panelSettings">
+        ⚙️ Settings <span class="arrow">▼</span>
+      </button>
+      <div class="menu-panel" id="panelSettings">
+        <div class="small">Your display name:</div>
+        <input id="nickInput" class="input-field" placeholder="Enter your name">
+      </div>
+
+      <button class="menu-btn" data-panel="panelControls">
+        🎮 Room Controls <span class="arrow">▼</span>
+      </button>
+      <div class="menu-panel" id="panelControls">
+        <div class="small">Start or join a room:</div>
+        <div class="controls" style="margin-top:10px;">
+          <button id="shareBtn" disabled>🖥️ Start Sharing</button>
+          <button id="pauseBtn" disabled style="display:none;">⏸️ Pause</button>
+          <button id="resumeBtn" disabled style="display:none;">▶️ Resume</button>
+          <button id="stopBtn" disabled>⏹️ Stop</button>
+          <button id="copyBtn" style="display:none;">📋 Copy Code</button>
+        </div>
+        <div style="margin-top:14px;">
+          <div class="small">Join existing room:</div>
+          <div style="display:flex; gap:8px; margin-top:6px;">
+            <input id="roomInput" class="input-field" placeholder="Room code" maxlength="6" style="flex:1;">
+            <button id="joinBtn" disabled style="padding:10px 16px; border-radius:8px; border:none; background:linear-gradient(135deg,#43e97b,#38f9d7); color:white; font-weight:600; cursor:pointer;">Join</button>
+          </div>
+        </div>
+        <div id="roomInfo" style="display:none; margin-top:14px; background:#f0f7ff; padding:12px; border-radius:8px;">
+          <div class="small">Your Room Code:</div>
+          <div id="roomCode" style="font-size:22px; font-weight:800; color:#667eea; letter-spacing:3px; margin-top:4px;"></div>
+        </div>
+      </div>
+    </nav>
+
+    <div style="margin-top:12px;">
+      <div class="small">Connection:</div>
+      <div id="connectionStatus" class="connection-status">Connecting...</div>
+    </div>
+
+    <div style="margin-top:auto; font-size:11px; color:#999; padding-top:12px;">
+      💡 Use a modern browser for best experience.
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="main">
+    <div class="meta">
+      <div id="viewers" class="viewers" style="display:none;">👥 Viewers: <span id="viewerCount">0</span></div>
+      <div id="publishedDoc" class="small" style="text-align:right;">No media shared</div>
+    </div>
+
+    <div class="video-container">
+      <video id="video" autoplay playsinline muted></video>
+      <div id="status" class="status">No active screen share</div>
+    </div>
+
+    <!-- Shared Media Container -->
+    <div class="shared-media-container" id="sharedMediaContainer">
+      <div class="shared-media-label">📁 <span id="sharedMediaName">Shared Media</span></div>
+      <video id="sharedVideo" controls style="display:none;"></video>
+      <audio id="sharedAudio" controls style="display:none;"></audio>
+      <img id="sharedImage" style="display:none; max-width:100%; border-radius:8px;">
+      <iframe id="sharedPdf" style="display:none; width:100%; height:300px; border:none; border-radius:8px;"></iframe>
+    </div>
+
+    <div>
+      <div class="small">💬 Live Chat</div>
+      <div id="chatBoxMain" class="chat"></div>
+      <div class="chat-form">
+        <input id="chatInputMain" placeholder="Say something...">
+        <button id="chatSendMain">Send</button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="developer-credit">
+  <div class="footer-dropdown">
+    <button class="footer-toggle" id="footerToggle">ℹ️ About</button>
+    <div class="footer-menu" id="footerMenu">
+      <a href="https://github.com/Y2cipher" target="_blank">👨‍💻 Developer</a>
+      <a href="mailto:okeleyetadd@gmail.com">📧 Contact</a>
+      <a href="https://www.linkedin.com/in/david-ayobami-okeleye-8aabb3242" target="_blank">💼 LinkedIn</a>
+    </div>
+  </div>
+  <div style="margin-top: 6px; font-size: 10px;">Echo WebShare © 2025</div>
+</div>
+
+<script>
+  // =============================================
+  // CONFIGURATION - Your Server URL
+  // =============================================
+  const SIGNALING_SERVER_URL = 'wss://echowebshare-server.onrender.com';
+  // Signaling Client
+  class SignalingClient {
+    constructor(url) {
+      this.url = url;
+      this.ws = null;
+      this.clientId = null;
+      this.listeners = {};
+      this.reconnectAttempts = 0;
+    }
+
+    connect() {
+      this.ws = new WebSocket(this.url);
+
+      this.ws.onopen = () => {
+        console.log('Connected to signaling server');
+        this.reconnectAttempts = 0;
+      };
+
+      this.ws.onmessage = (e) => {
+        const data = JSON.parse(e.data);
+        if (data.type === 'connected') {
+          this.clientId = data.clientId;
+          this._emit('open', this.clientId);
+          return;
+        }
+        this._emit('message', this.clientId, JSON.stringify(data));
+      };
+
+      this.ws.onclose = () => {
+        this._emit('close');
+        if (this.reconnectAttempts < 5) {
+          this.reconnectAttempts++;
+          setTimeout(() => this.connect(), 2000 * this.reconnectAttempts);
+        }
+      };
+
+      this.ws.onerror = (err) => this._emit('error', err);
+    }
+
+    on(event, cb) { (this.listeners[event] ||= []).push(cb); }
+    _emit(event, ...args) { (this.listeners[event] || []).forEach(cb => cb(...args)); }
+    send(id, msg) { if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(msg); }
+  }
+
+  const signalingServer = new SignalingClient(SIGNALING_SERVER_URL);
+  const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+
+  let clientId = null, localStream = null, currentRoom = null;
+  let peerConnections = {}, viewerCount = 0, isPaused = false;
+
+  // DOM Elements
+  const $ = id => document.getElementById(id);
+  const shareBtn = $('shareBtn'), pauseBtn = $('pauseBtn'), resumeBtn = $('resumeBtn');
+  const stopBtn = $('stopBtn'), copyBtn = $('copyBtn'), joinBtn = $('joinBtn');
+  const roomInput = $('roomInput'), video = $('video'), status = $('status');
+  const connectionStatus = $('connectionStatus'), roomInfo = $('roomInfo');
+  const roomCodeEl = $('roomCode'), viewersEl = $('viewers'), viewerCountEl = $('viewerCount');
+  const chatBox = $('chatBox'), chatInput = $('chatInput');
+  const chatBoxMain = $('chatBoxMain'), chatInputMain = $('chatInputMain');
+  const fileInput = $('fileInput'), fileInfo = $('fileInfo');
+  const docShareBtn = $('docShareBtn'), publishedDoc = $('publishedDoc');
+  const nickInput = $('nickInput');
+  const sharedMediaContainer = $('sharedMediaContainer');
+  const sharedVideo = $('sharedVideo'), sharedAudio = $('sharedAudio');
+  const sharedImage = $('sharedImage'), sharedPdf = $('sharedPdf');
+  const sharedMediaName = $('sharedMediaName');
+
+  // Mobile Menu
+  const hamburger = $('hamburger');
+  const mobileDropdown = $('mobileDropdown');
+  const mobileMenuContent = $('mobileMenuContent');
+
+  function setupMobileMenu() {
+    const sidebar = $('sidebarDesktop');
+    mobileMenuContent.innerHTML = sidebar.innerHTML;
+
+    // Rebind events for mobile menu
+    mobileMenuContent.querySelectorAll('.menu-btn').forEach(btn => {
+      btn.addEventListener('click', () => togglePanel(btn, mobileMenuContent));
+    });
+
+    // Clone control button handlers
+    bindMobileControls();
+  }
+
+  function bindMobileControls() {
+    const mobileShareBtn = mobileMenuContent.querySelector('#shareBtn');
+    const mobileStopBtn = mobileMenuContent.querySelector('#stopBtn');
+    const mobileJoinBtn = mobileMenuContent.querySelector('#joinBtn');
+    const mobileCopyBtn = mobileMenuContent.querySelector('#copyBtn');
+    const mobileDocShareBtn = mobileMenuContent.querySelector('#docShareBtn');
+    const mobileChatSend = mobileMenuContent.querySelector('#chatSend');
+
+    if (mobileShareBtn) mobileShareBtn.onclick = startSharing;
+    if (mobileStopBtn) mobileStopBtn.onclick = stopSharing;
+    if (mobileJoinBtn) mobileJoinBtn.onclick = joinRoom;
+    if (mobileCopyBtn) mobileCopyBtn.onclick = copyRoomCode;
+    if (mobileDocShareBtn) mobileDocShareBtn.onclick = shareFile;
+    if (mobileChatSend) mobileChatSend.onclick = () => {
+      const input = mobileMenuContent.querySelector('#chatInput');
+      if (input?.value.trim()) { sendChat(input.value.trim()); input.value = ''; }
+    };
+  }
+
+  hamburger.addEventListener('click', () => {
+    hamburger.classList.toggle('active');
+    mobileDropdown.classList.toggle('active');
+  });
+
+  mobileDropdown.addEventListener('click', (e) => {
+    if (e.target === mobileDropdown) {
+      hamburger.classList.remove('active');
+      mobileDropdown.classList.remove('active');
+    }
+  });
+
+  // Panel Toggle
+  function togglePanel(btn, container = document) {
+    const panelId = btn.dataset.panel;
+    const panel = container.querySelector('#' + panelId);
+    const isOpen = btn.getAttribute('aria-expanded') === 'true';
+
+    // Close all panels in this container
+    container.querySelectorAll('.menu-btn').forEach(b => b.setAttribute('aria-expanded', 'false'));
+    container.querySelectorAll('.menu-panel').forEach(p => p.classList.remove('open'));
+
+    if (!isOpen) {
+      btn.setAttribute('aria-expanded', 'true');
+      panel.classList.add('open');
+    }
+  }
+
+  document.querySelectorAll('#sidebarDesktop .menu-btn').forEach(btn => {
+    btn.addEventListener('click', () => togglePanel(btn, $('sidebarDesktop')));
+  });
+
+  // Connect to signaling server
+  signalingServer.connect();
+
+  signalingServer.on('open', (id) => {
+    clientId = id;
+    connectionStatus.textContent = '✅ Connected';
+    connectionStatus.classList.add('connected');
+    shareBtn.disabled = false;
+    joinBtn.disabled = false;
+    updateMobileStatus();
+  });
+
+  signalingServer.on('close', () => {
+    connectionStatus.textContent = '❌ Reconnecting...';
+    connectionStatus.classList.remove('connected');
+    shareBtn.disabled = true;
+    joinBtn.disabled = true;
+    updateMobileStatus();
+  });
+
+  signalingServer.on('message', async (id, message) => {
+    const data = JSON.parse(message);
+
+    switch (data.type) {
+      case 'room-created':
+        currentRoom = data.roomCode;
+        roomCodeEl.textContent = currentRoom;
+        roomInfo.style.display = 'block';
+        copyBtn.style.display = 'inline-block';
+        viewersEl.style.display = 'block';
+        updateMobileRoomInfo();
+        break;
+
+      case 'viewer-joined':
+        viewerCount++;
+        viewerCountEl.textContent = viewerCount;
+        await createOffer(data.viewerId);
+        break;
+
+      case 'joined-room':
+        currentRoom = data.roomCode;
+        status.textContent = 'Joined room — waiting for host...';
+        break;
+
+      case 'offer':
+        await handleOffer(data.from, data.offer);
+        break;
+
+      case 'answer':
+        await handleAnswer(data.from, data.answer);
+        break;
+
+      case 'ice-candidate':
+        await handleIceCandidate(data.from, data.candidate);
+        break;
+
+      case 'host-left':
+        alert('Host ended the session');
+        cleanup();
+        break;
+
+      case 'viewer-left':
+        viewerCount = Math.max(0, viewerCount - 1);
+        viewerCountEl.textContent = viewerCount;
+        if (peerConnections[data.viewerId]) {
+          peerConnections[data.viewerId].close();
+          delete peerConnections[data.viewerId];
+        }
+        break;
+
+      case 'chat':
+        appendChatMessage(data.nick || 'Anon', data.text);
+        break;
+
+      case 'media-shared':
+        displaySharedMedia(data.media);
+        break;
+
+      case 'error':
+        alert(data.message);
+        break;
+    }
+  });
+
+  // Screen Sharing
+  async function startSharing() {
+    try {
+      localStream = await navigator.mediaDevices.getDisplayMedia({
+        video: { cursor: 'always' },
+        audio: true
+      });
+      video.srcObject = localStream;
+      status.style.display = 'none';
+
+      signalingServer.send(clientId, JSON.stringify({ type: 'create-room' }));
+
+      shareBtn.disabled = true;
+      stopBtn.disabled = false;
+      pauseBtn.disabled = false;
+      pauseBtn.style.display = 'inline-block';
+      roomInput.disabled = true;
+
+      localStream.getVideoTracks()[0].onended = stopSharing;
+      updateMobileControls();
+    } catch (err) {
+      alert('Could not start screen sharing');
+    }
+  }
+
+  function pauseSharing() {
+    if (!localStream || isPaused) return;
+    localStream.getTracks().forEach(t => t.enabled = false);
+    isPaused = true;
+    pauseBtn.style.display = 'none';
+    resumeBtn.style.display = 'inline-block';
+    resumeBtn.disabled = false;
+    status.style.display = 'block';
+    status.textContent = '⏸️ Paused';
+    updateMobileControls();
+  }
+
+  function resumeSharing() {
+    if (!localStream || !isPaused) return;
+    localStream.getTracks().forEach(t => t.enabled = true);
+    isPaused = false;
+    resumeBtn.style.display = 'none';
+    pauseBtn.style.display = 'inline-block';
+    status.style.display = 'none';
+    updateMobileControls();
+  }
+
+  function stopSharing() {
+    if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
+    Object.values(peerConnections).forEach(pc => pc.close());
+    peerConnections = {};
+    if (currentRoom) signalingServer.send(clientId, JSON.stringify({ type: 'leave-room' }));
+    cleanup();
+  }
+
+  function cleanup() {
+    currentRoom = null;
+    viewerCount = 0;
+    isPaused = false;
+    roomCodeEl.textContent = '';
+    roomInfo.style.display = 'none';
+    copyBtn.style.display = 'none';
+    viewersEl.style.display = 'none';
+    viewerCountEl.textContent = '0';
+    shareBtn.disabled = false;
+    stopBtn.disabled = true;
+    pauseBtn.disabled = true;
+    pauseBtn.style.display = 'none';
+    resumeBtn.disabled = true;
+    resumeBtn.style.display = 'none';
+    roomInput.disabled = false;
+    status.style.display = 'block';
+    status.textContent = 'No active screen share';
+    video.srcObject = null;
+    publishedDoc.textContent = 'No media shared';
+    sharedMediaContainer.classList.remove('active');
+    updateMobileControls();
+    updateMobileRoomInfo();
+  }
+
+  // WebRTC Functions
+  async function createOffer(viewerId) {
+    const pc = new RTCPeerConnection(rtcConfig);
+    peerConnections[viewerId] = pc;
+
+    if (localStream) {
+      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+    }
+
+    pc.onicecandidate = e => {
+      if (e.candidate) {
+        signalingServer.send(clientId, JSON.stringify({
+          type: 'ice-candidate', candidate: e.candidate, target: viewerId
+        }));
+      }
+    };
+
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    signalingServer.send(clientId, JSON.stringify({ type: 'offer', offer, target: viewerId }));
+  }
+
+  async function handleOffer(hostId, offer) {
+    const pc = new RTCPeerConnection(rtcConfig);
+    peerConnections[hostId] = pc;
+
+    pc.ontrack = e => {
+      video.srcObject = e.streams[0];
+      status.style.display = 'none';
+    };
+
+    pc.onicecandidate = e => {
+      if (e.candidate) {
+        signalingServer.send(clientId, JSON.stringify({
+          type: 'ice-candidate', candidate: e.candidate, target: hostId
+        }));
+      }
+    };
+
+    await pc.setRemoteDescription(new RTCSessionDescription(offer));
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    signalingServer.send(clientId, JSON.stringify({ type: 'answer', answer, target: hostId }));
+  }
+
+  async function handleAnswer(viewerId, answer) {
+    const pc = peerConnections[viewerId];
+    if (pc) await pc.setRemoteDescription(new RTCSessionDescription(answer));
+  }
+
+  async function handleIceCandidate(peerId, candidate) {
+    const pc = peerConnections[peerId];
+    if (pc) await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
+  }
+
+  // Join Room
+  function joinRoom() {
+    const code = (roomInput.value || '').trim().toUpperCase();
+    if (!code) return alert('Enter a room code');
+    signalingServer.send(clientId, JSON.stringify({ type: 'join-room', roomCode: code }));
+    joinBtn.disabled = true;
+  }
+
+  // Copy Room Code
+  async function copyRoomCode() {
+    try {
+      await navigator.clipboard.writeText(roomCodeEl.textContent);
+      alert('Room code copied!');
+    } catch {
+      alert('Could not copy. Please copy manually: ' + roomCodeEl.textContent);
+    }
+  }
+
+  // Chat Functions
+  function sendChat(text) {
+    const nick = nickInput.value.trim() || 'Guest';
+    signalingServer.send(clientId, JSON.stringify({ type: 'chat', text, nick }));
+  }
+
+  function appendChatMessage(nick, text) {
+    const el = document.createElement('div');
+    el.className = 'msg';
+    el.innerHTML = `<span class="nick">${escapeHtml(nick)}:</span> ${escapeHtml(text)}`;
+    chatBox.appendChild(el.cloneNode(true));
+    chatBoxMain.appendChild(el);
+    chatBox.scrollTop = chatBox.scrollHeight;
+    chatBoxMain.scrollTop = chatBoxMain.scrollHeight;
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  // File/Media Sharing
+  let stagedFile = null;
+
+  fileInput.addEventListener('change', (e) => {
+    const f = e.target.files[0];
+    if (!f) { fileInfo.textContent = ''; stagedFile = null; return; }
+    stagedFile = f;
+    const size = f.size < 1024 * 1024 
+      ? (f.size / 1024).toFixed(1) + ' KB' 
+      : (f.size / (1024 * 1024)).toFixed(1) + ' MB';
+    fileInfo.textContent = `${f.name} — ${size}`;
+  });
+
+  function shareFile() {
+    if (!stagedFile) return alert('Choose a file first');
+    if (!currentRoom) return alert('Join or create a room first');
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const mediaData = {
+        name: stagedFile.name,
+        type: stagedFile.type,
+        data: reader.result
+      };
+
+      signalingServer.send(clientId, JSON.stringify({ type: 'share-media', media: mediaData }));
+      displaySharedMedia(mediaData);
+      publishedDoc.textContent = '📁 ' + stagedFile.name;
+    };
+    reader.readAsDataURL(stagedFile);
+  }
+
+  function displaySharedMedia(media) {
+    sharedMediaContainer.classList.add('active');
+    sharedMediaName.textContent = media.name;
+    publishedDoc.textContent = '📁 ' + media.name;
+
+    // Hide all media elements first
+    sharedVideo.style.display = 'none';
+    sharedAudio.style.display = 'none';
+    sharedImage.style.display = 'none';
+    sharedPdf.style.display = 'none';
+
+    if (media.type.startsWith('video/')) {
+      sharedVideo.src = media.data;
+      sharedVideo.style.display = 'block';
+    } else if (media.type.startsWith('audio/')) {
+      sharedAudio.src = media.data;
+      sharedAudio.style.display = 'block';
+    } else if (media.type.startsWith('image/')) {
+      sharedImage.src = media.data;
+      sharedImage.style.display = 'block';
+    } else if (media.type === 'application/pdf') {
+      sharedPdf.src = media.data;
+      sharedPdf.style.display = 'block';
+    }
+  }
+
+  // Mobile Sync Functions
+  function updateMobileStatus() {
+    const mobileStatus = mobileMenuContent.querySelector('#connectionStatus');
+    if (mobileStatus) {
+      mobileStatus.textContent = connectionStatus.textContent;
+      mobileStatus.className = connectionStatus.className;
+    }
+    const mobileShareBtn = mobileMenuContent.querySelector('#shareBtn');
+    const mobileJoinBtn = mobileMenuContent.querySelector('#joinBtn');
+    if (mobileShareBtn) mobileShareBtn.disabled = shareBtn.disabled;
+    if (mobileJoinBtn) mobileJoinBtn.disabled = joinBtn.disabled;
+  }
+
+  function updateMobileControls() {
+    const els = ['shareBtn', 'stopBtn', 'pauseBtn', 'resumeBtn', 'copyBtn'];
+    els.forEach(id => {
+      const desktop = $(id);
+      const mobile = mobileMenuContent.querySelector('#' + id);
+      if (mobile && desktop) {
+        mobile.disabled = desktop.disabled;
+        mobile.style.display = desktop.style.display;
+      }
+    });
+  }
+
+  function updateMobileRoomInfo() {
+    const mobileRoomInfo = mobileMenuContent.querySelector('#roomInfo');
+    const mobileRoomCode = mobileMenuContent.querySelector('#roomCode');
+    if (mobileRoomInfo) mobileRoomInfo.style.display = roomInfo.style.display;
+    if (mobileRoomCode) mobileRoomCode.textContent = roomCodeEl.textContent;
+  }
+
+  // Event Listeners
+  shareBtn.onclick = startSharing;
+  pauseBtn.onclick = pauseSharing;
+  resumeBtn.onclick = resumeSharing;
+  stopBtn.onclick = stopSharing;
+  copyBtn.onclick = copyRoomCode;
+  joinBtn.onclick = joinRoom;
+  docShareBtn.onclick = shareFile;
+
+  $('chatSend').onclick = () => {
+    if (chatInput.value.trim()) { sendChat(chatInput.value.trim()); chatInput.value = ''; }
+  };
+  $('chatSendMain').onclick = () => {
+    if (chatInputMain.value.trim()) { sendChat(chatInputMain.value.trim()); chatInputMain.value = ''; }
+  };
+
+  chatInput.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); $('chatSend').click(); } };
+  chatInputMain.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); $('chatSendMain').click(); } };
+
+  window.addEventListener('beforeunload', () => {
+    signalingServer.send(clientId, JSON.stringify({ type: 'leave-room' }));
+  });
+
+  // Initialize mobile menu
+  setupMobileMenu();
+
+  // Footer dropdown toggle
+  const footerToggle = document.getElementById('footerToggle');
+  const footerMenu = document.getElementById('footerMenu');
+  
+  footerToggle.addEventListener('click', (e) => {
+    e.stopPropagation();
+    footerMenu.classList.toggle('active');
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!footerMenu.contains(e.target) && e.target !== footerToggle) {
+      footerMenu.classList.remove('active');
+    }
+  });
+</script>
+</body>
+</html>
