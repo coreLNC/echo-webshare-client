@@ -1,4 +1,999 @@
-const SIGNALING_SERVER_URL = 'wss://echowebshare-server.onrender.com';
+<!DOCTYPE html>
+<html lang="en">
+<!--
+  Echo WebShare Platform
+  Copyright (c) 2025 David Ayobami Okeleye. All Rights Reserved.
+
+  This software is proprietary and confidential.
+  Unauthorized copying, distribution, modification, or use is strictly prohibited.
+
+  For licensing inquiries: okeleyetadd@gmail.com
+  GitHub: https://github.com/Y2cipher
+  LinkedIn: https://www.linkedin.com/in/david-ayobami-okeleye-8aabb3242f
+-->
+<head>
+  <meta name="description" content="Echo WebShare - Real-time screen sharing using WebRTC.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8">
+  <title>Echo WebShare</title>
+  <style>
+    :root {
+      --bg: #f3f7f2;
+      --ink: #17211c;
+      --muted: #66736b;
+      --line: #dfe8df;
+      --surface: #ffffff;
+      --surface-soft: #f8faf7;
+      --primary: #276f62;
+      --primary-dark: #184c44;
+      --accent: #d86645;
+      --warning: #a56713;
+      --danger: #bb3f4a;
+      --success: #2f7d4d;
+      --violet: #6860c8;
+      --shadow: 0 24px 70px rgba(22, 31, 25, 0.16);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html,
+    body {
+      min-height: 100%;
+    }
+
+    body {
+      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      background:
+        linear-gradient(90deg, rgba(39, 111, 98, 0.06) 1px, transparent 1px),
+        linear-gradient(180deg, rgba(216, 102, 69, 0.05) 1px, transparent 1px),
+        var(--bg);
+      background-size: 42px 42px;
+      color: var(--ink);
+      line-height: 1.45;
+      overflow-x: hidden;
+    }
+
+    body.modal-open {
+      overflow: hidden;
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    button {
+      border: 0;
+    }
+
+    a {
+      color: inherit;
+    }
+
+    .app-shell {
+      width: 100%;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      padding: 22px;
+    }
+
+    .topbar,
+    .stage-panel,
+    .activity-panel {
+      border: 1px solid rgba(223, 232, 223, 0.92);
+      background: rgba(255, 255, 255, 0.9);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+    }
+
+    .topbar {
+      width: min(1280px, 100%);
+      margin: 0 auto;
+      min-height: 72px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 14px 16px;
+    }
+
+    .brand {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-mark {
+      width: 44px;
+      height: 44px;
+      flex: 0 0 44px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      background: var(--primary);
+      color: white;
+      font-size: 21px;
+      font-weight: 800;
+    }
+
+    .brand h1 {
+      font-size: 20px;
+      line-height: 1.1;
+      letter-spacing: 0;
+    }
+
+    .brand p {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 3px;
+    }
+
+    .topbar-meta {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .status-pill,
+    .viewers {
+      min-height: 36px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border-radius: 8px;
+      border: 1px solid #ead7ac;
+      background: #fff7e3;
+      color: #6d4b07;
+      padding: 8px 11px;
+      font-size: 13px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .status-pill.connected {
+      border-color: #c7e7d2;
+      background: #ecf8ef;
+      color: #1d6638;
+    }
+
+    .viewers {
+      border-color: #cfe2ff;
+      background: #f0f6ff;
+      color: #275174;
+    }
+
+    .btn,
+    .icon-btn,
+    .tab-btn,
+    .shared-files-header {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 40px;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      padding: 10px 13px;
+      color: var(--ink);
+      background: #eef3ee;
+      cursor: pointer;
+      font-weight: 700;
+      transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+    }
+
+    .btn:hover,
+    .icon-btn:hover,
+    .tab-btn:hover,
+    .shared-files-header:hover {
+      transform: translateY(-1px);
+    }
+
+    .btn:disabled,
+    .icon-btn:disabled,
+    .tab-btn:disabled {
+      cursor: not-allowed;
+      opacity: 0.48;
+      transform: none;
+    }
+
+    .btn.primary {
+      background: var(--primary);
+      color: white;
+    }
+
+    .btn.primary:hover {
+      background: var(--primary-dark);
+    }
+
+    .btn.warning {
+      background: #fff0d7;
+      color: var(--warning);
+      border-color: #f2d49f;
+    }
+
+    .btn.success {
+      background: #e7f7ed;
+      color: var(--success);
+      border-color: #bfdfca;
+    }
+
+    .btn.danger {
+      background: #fff0f2;
+      color: var(--danger);
+      border-color: #f4c8ce;
+    }
+
+    .btn.violet {
+      background: #f1efff;
+      color: var(--violet);
+      border-color: #d8d3ff;
+    }
+
+    .workspace {
+      width: min(1280px, 100%);
+      margin: 0 auto;
+      flex: 1;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
+      gap: 18px;
+      align-items: start;
+    }
+
+    .stage-panel,
+    .activity-panel {
+      border-radius: 8px;
+      min-width: 0;
+    }
+
+    .stage-panel {
+      padding: 16px;
+    }
+
+    .stage-toolbar,
+    .panel-header,
+    .modal-head,
+    .meta-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .stage-title,
+    .panel-title {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      font-weight: 800;
+    }
+
+    .live-dot {
+      width: 10px;
+      height: 10px;
+      flex: 0 0 10px;
+      border-radius: 999px;
+      background: var(--danger);
+      box-shadow: 0 0 0 5px rgba(187, 63, 74, 0.12);
+    }
+
+    .media-chip,
+    .small {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .media-chip {
+      min-height: 34px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: flex-end;
+      max-width: 48%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface-soft);
+      padding: 7px 10px;
+    }
+
+    .video-container {
+      position: relative;
+      width: 100%;
+      min-height: 380px;
+      aspect-ratio: 16 / 9;
+      margin-top: 14px;
+      overflow: hidden;
+      border-radius: 8px;
+      border: 1px solid #121714;
+      background: #060807;
+      cursor: pointer;
+    }
+
+    video,
+    audio {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: contain;
+    }
+
+    .status {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: 18px;
+      color: #dbe4dd;
+      text-align: center;
+      pointer-events: none;
+    }
+
+    .fullscreen-controls {
+      position: absolute;
+      right: 12px;
+      bottom: 12px;
+      z-index: 10;
+      display: flex;
+      gap: 8px;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+
+    .video-container:hover .fullscreen-controls,
+    .video-container.mini-mode .fullscreen-controls {
+      opacity: 1;
+    }
+
+    .fullscreen-btn,
+    .mini-btn {
+      min-width: 42px;
+      height: 42px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: rgba(0, 0, 0, 0.72);
+      color: white;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 800;
+      padding: 0 10px;
+    }
+
+    .fullscreen-btn:hover,
+    .mini-btn:hover {
+      background: rgba(0, 0, 0, 0.9);
+    }
+
+    .video-container.mini-mode {
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      z-index: 70;
+      width: 320px;
+      height: 180px;
+      min-height: 0;
+      box-shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
+    }
+
+    .video-container:fullscreen {
+      max-width: 100vw;
+      max-height: 100vh;
+      border-radius: 0;
+    }
+
+    .shared-media-container {
+      display: none;
+      margin-top: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(248, 250, 247, 0.86);
+      overflow: hidden;
+    }
+
+    .shared-media-container.active {
+      display: block;
+    }
+
+    .shared-files-header {
+      width: 100%;
+      min-height: 46px;
+      border-radius: 0;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      background: white;
+      justify-content: space-between;
+      text-align: left;
+    }
+
+    .shared-files-list {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.25s ease;
+    }
+
+    .shared-files-list.open {
+      max-height: 420px;
+      overflow-y: auto;
+    }
+
+    .file-item {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      padding: 12px;
+      border-top: 1px solid var(--line);
+      background: white;
+    }
+
+    .file-item:first-child {
+      border-top: 0;
+    }
+
+    .file-name {
+      font-weight: 800;
+      overflow-wrap: anywhere;
+    }
+
+    .file-size {
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .file-preview {
+      grid-column: 1 / -1;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      background: #101411;
+    }
+
+    .file-preview img,
+    .file-preview video,
+    .file-preview audio,
+    .file-preview iframe {
+      width: 100%;
+      display: block;
+      max-height: 320px;
+      border: 0;
+      object-fit: contain;
+      background: #101411;
+    }
+
+    .file-preview audio {
+      background: white;
+    }
+
+    .activity-panel {
+      position: sticky;
+      top: 22px;
+      display: flex;
+      flex-direction: column;
+      max-height: calc(100vh - 44px);
+      min-height: 560px;
+      overflow: hidden;
+    }
+
+    .panel-header {
+      padding: 15px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .chat {
+      flex: 1;
+      min-height: 190px;
+      overflow: auto;
+      padding: 14px;
+      background: var(--surface);
+    }
+
+    .chat .msg {
+      margin-bottom: 12px;
+      color: #263028;
+      overflow-wrap: anywhere;
+    }
+
+    .chat .nick {
+      display: block;
+      color: var(--primary);
+      font-size: 12px;
+      font-weight: 800;
+      margin-bottom: 2px;
+    }
+
+    .chat-form {
+      display: flex;
+      gap: 8px;
+      padding: 12px;
+      border-top: 1px solid var(--line);
+      background: var(--surface-soft);
+    }
+
+    .input-field,
+    .chat-form input {
+      width: 100%;
+      min-height: 42px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: white;
+      color: var(--ink);
+      padding: 10px 12px;
+      outline: none;
+    }
+
+    .input-field:focus,
+    .chat-form input:focus {
+      border-color: rgba(39, 111, 98, 0.65);
+      box-shadow: 0 0 0 4px rgba(39, 111, 98, 0.1);
+    }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 90;
+      display: grid;
+      place-items: center;
+      padding: 20px;
+      background: rgba(17, 24, 20, 0.58);
+    }
+
+    .modal-backdrop[hidden],
+    .tab-panel[hidden] {
+      display: none;
+    }
+
+    .control-modal {
+      width: min(880px, 100%);
+      max-height: min(720px, calc(100vh - 40px));
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.78);
+      border-radius: 8px;
+      background: var(--surface);
+      box-shadow: 0 30px 90px rgba(0, 0, 0, 0.28);
+    }
+
+    .modal-head {
+      padding: 16px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .modal-head h2 {
+      font-size: 18px;
+      letter-spacing: 0;
+    }
+
+    .icon-btn {
+      width: 40px;
+      height: 40px;
+      padding: 0;
+      font-size: 22px;
+      line-height: 1;
+    }
+
+    .modal-tabs {
+      display: flex;
+      gap: 8px;
+      padding: 10px 12px;
+      overflow-x: auto;
+      border-bottom: 1px solid var(--line);
+      background: var(--surface-soft);
+    }
+
+    .tab-btn {
+      min-height: 36px;
+      padding: 8px 12px;
+      white-space: nowrap;
+      background: transparent;
+      border-color: transparent;
+      color: var(--muted);
+    }
+
+    .tab-btn.active {
+      background: white;
+      border-color: var(--line);
+      color: var(--primary);
+      box-shadow: 0 8px 18px rgba(22, 31, 25, 0.08);
+    }
+
+    .modal-body {
+      overflow: auto;
+      padding: 16px;
+    }
+
+    .modal-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .field-group {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface-soft);
+      padding: 14px;
+    }
+
+    .field-group h3 {
+      font-size: 15px;
+      margin-bottom: 12px;
+    }
+
+    .field-group label {
+      display: block;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 7px;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .room-code-card {
+      display: none;
+      margin-top: 12px;
+      border: 1px solid #cfe2ff;
+      border-radius: 8px;
+      background: #f2f7ff;
+      padding: 12px;
+    }
+
+    .room-code {
+      color: var(--violet);
+      font-size: 24px;
+      font-weight: 900;
+      letter-spacing: 3px;
+      margin-top: 3px;
+    }
+
+    .join-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+    }
+
+    .file-share-section input[type="file"] {
+      width: 100%;
+      margin-bottom: 10px;
+      color: var(--muted);
+    }
+
+    .modal-chat {
+      height: 260px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      margin-bottom: 10px;
+    }
+
+    .about-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .about-links a {
+      text-decoration: none;
+    }
+
+    .developer-credit {
+      width: min(1280px, 100%);
+      margin: 0 auto;
+      color: rgba(35, 45, 38, 0.62);
+      font-size: 12px;
+      text-align: center;
+    }
+
+    .toast-region {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      z-index: 120;
+      display: grid;
+      gap: 10px;
+      width: min(360px, calc(100vw - 36px));
+    }
+
+    .toast {
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--primary);
+      border-radius: 8px;
+      background: white;
+      box-shadow: 0 16px 44px rgba(22, 31, 25, 0.18);
+      padding: 12px;
+      color: var(--ink);
+      font-size: 14px;
+    }
+
+    .toast.error {
+      border-left-color: var(--danger);
+    }
+
+    .toast.success {
+      border-left-color: var(--success);
+    }
+
+    .toast.warning {
+      border-left-color: var(--warning);
+    }
+
+    @media (max-width: 980px) {
+      .app-shell {
+        padding: 14px;
+      }
+
+      .topbar {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .topbar-meta {
+        width: 100%;
+        justify-content: flex-start;
+      }
+
+      .workspace {
+        grid-template-columns: 1fr;
+      }
+
+      .activity-panel {
+        position: static;
+        max-height: none;
+        min-height: 420px;
+      }
+
+      .video-container {
+        min-height: 280px;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .app-shell {
+        padding: 10px;
+      }
+
+      .brand-mark {
+        width: 38px;
+        height: 38px;
+        flex-basis: 38px;
+      }
+
+      .brand h1 {
+        font-size: 18px;
+      }
+
+      .topbar-meta,
+      .controls,
+      .chat-form,
+      .join-row {
+        display: grid;
+        grid-template-columns: 1fr;
+        width: 100%;
+      }
+
+      .topbar-meta > *,
+      .controls > *,
+      .chat-form > *,
+      .join-row > * {
+        width: 100%;
+      }
+
+      .stage-toolbar,
+      .meta-row {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .media-chip {
+        max-width: 100%;
+        justify-content: flex-start;
+      }
+
+      .video-container {
+        min-height: 220px;
+      }
+
+      .fullscreen-controls {
+        opacity: 1;
+      }
+
+      .video-container.mini-mode {
+        width: 220px;
+        height: 124px;
+        right: 10px;
+        bottom: 10px;
+      }
+
+      .modal-backdrop {
+        padding: 10px;
+      }
+
+      .control-modal {
+        max-height: calc(100vh - 20px);
+      }
+
+      .modal-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .file-item {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">E</div>
+        <div>
+          <h1>Echo WebShare</h1>
+          <p>Realtime screen sharing</p>
+        </div>
+      </div>
+
+      <div class="topbar-meta">
+        <div id="connectionStatus" class="status-pill">Connecting...</div>
+        <div id="viewers" class="viewers" style="display:none;">Viewers: <span id="viewerCount">0</span></div>
+        <button class="btn primary" type="button" data-open-controls>Controls</button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <section class="stage-panel" aria-label="Broadcast preview">
+        <div class="stage-toolbar">
+          <div class="stage-title">
+            <span class="live-dot" aria-hidden="true"></span>
+            <span>Screen Preview</span>
+          </div>
+          <div id="publishedDoc" class="media-chip">No media shared</div>
+        </div>
+
+        <div class="video-container" id="videoContainer">
+          <video id="video" autoplay playsinline muted></video>
+          <div id="status" class="status">No active screen share</div>
+          <div class="fullscreen-controls">
+            <button class="fullscreen-btn" id="fullscreenBtn" type="button" title="Fullscreen" aria-label="Fullscreen">[ ]</button>
+            <button class="mini-btn" id="miniBtn" type="button" title="Mini mode" aria-label="Mini mode">PiP</button>
+          </div>
+        </div>
+
+        <div class="shared-media-container" id="sharedMediaContainer">
+          <button class="shared-files-header" id="sharedFilesHeader" type="button" aria-expanded="true">
+            <span>Shared Files (<span id="fileCount">0</span>)</span>
+            <span id="filesToggleArrow" aria-hidden="true">v</span>
+          </button>
+          <div class="shared-files-list open" id="sharedFilesList"></div>
+        </div>
+      </section>
+
+      <aside class="activity-panel" aria-label="Live chat">
+        <div class="panel-header">
+          <div class="panel-title">Live Chat</div>
+          <button class="btn" type="button" data-open-controls data-tab-target="chat">Open</button>
+        </div>
+        <div id="chatBoxMain" class="chat"></div>
+        <div class="chat-form">
+          <input id="chatInputMain" placeholder="Say something..." autocomplete="off">
+          <button class="btn primary" id="chatSendMain" type="button">Send</button>
+        </div>
+      </aside>
+    </main>
+
+    <footer class="developer-credit">
+      Echo WebShare (c) 2025 David Ayobami Okeleye
+    </footer>
+  </div>
+
+  <div class="modal-backdrop" id="controlModal" hidden>
+    <section class="control-modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="modal-head">
+        <div>
+          <h2 id="modalTitle">Control Center</h2>
+          <div class="small">Echo WebShare</div>
+        </div>
+        <button class="icon-btn" type="button" aria-label="Close controls" data-close-modal>&times;</button>
+      </div>
+
+      <div class="modal-tabs" role="tablist" aria-label="Control sections">
+        <button class="tab-btn active" type="button" role="tab" aria-selected="true" data-tab="share">Share</button>
+        <button class="tab-btn" type="button" role="tab" aria-selected="false" data-tab="join">Join</button>
+        <button class="tab-btn" type="button" role="tab" aria-selected="false" data-tab="chat">Chat</button>
+        <button class="tab-btn" type="button" role="tab" aria-selected="false" data-tab="settings">Settings</button>
+        <button class="tab-btn" type="button" role="tab" aria-selected="false" data-tab="about">About</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="tab-panel" id="tab-share" role="tabpanel">
+          <div class="modal-grid">
+            <div class="field-group">
+              <h3>Room Controls</h3>
+              <div class="controls">
+                <button id="shareBtn" class="btn primary" type="button" disabled>Start Sharing</button>
+                <button id="pauseBtn" class="btn warning" type="button" disabled style="display:none;">Pause</button>
+                <button id="resumeBtn" class="btn success" type="button" disabled style="display:none;">Resume</button>
+                <button id="stopBtn" class="btn danger" type="button" disabled>Stop</button>
+                <button id="copyBtn" class="btn violet" type="button" style="display:none;">Copy Code</button>
+              </div>
+
+              <div id="roomInfo" class="room-code-card">
+                <div class="small">Room Code</div>
+                <div id="roomCode" class="room-code"></div>
+              </div>
+            </div>
+
+            <div class="field-group file-share-section">
+              <h3>File Share</h3>
+              <label for="fileInput">Upload video, audio, image, or PDF</label>
+              <input id="fileInput" type="file" accept="video/*,audio/*,application/pdf,image/*">
+              <div id="fileInfo" class="small" style="margin-bottom:10px;"></div>
+              <button id="docShareBtn" class="btn primary" type="button">Share to Room</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-panel" id="tab-join" role="tabpanel" hidden>
+          <div class="field-group">
+            <h3>Join Room</h3>
+            <label for="roomInput">Room code</label>
+            <div class="join-row">
+              <input id="roomInput" class="input-field" placeholder="ABC123" maxlength="6" autocomplete="off">
+              <button id="joinBtn" class="btn success" type="button" disabled>Join</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-panel" id="tab-chat" role="tabpanel" hidden>
+          <div id="chatBox" class="chat modal-chat"></div>
+          <div class="chat-form" style="border:0; padding:0; background:transparent;">
+            <input id="chatInput" placeholder="Type a message..." autocomplete="off">
+            <button id="chatSend" class="btn primary" type="button">Send</button>
+          </div>
+        </div>
+
+        <div class="tab-panel" id="tab-settings" role="tabpanel" hidden>
+          <div class="field-group">
+            <h3>Profile</h3>
+            <label for="nickInput">Display name</label>
+            <input id="nickInput" class="input-field" placeholder="Guest" autocomplete="name">
+          </div>
+        </div>
+
+        <div class="tab-panel" id="tab-about" role="tabpanel" hidden>
+          <div class="field-group">
+            <h3>About</h3>
+            <div class="about-links">
+              <a class="btn" href="https://github.com/Y2cipher" target="_blank" rel="noreferrer">Developer</a>
+              <a class="btn" href="mailto:okeleyetadd@gmail.com">Contact</a>
+              <a class="btn" href="https://www.linkedin.com/in/david-ayobami-okeleye-8aabb3242f" target="_blank" rel="noreferrer">LinkedIn</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="toast-region" id="toastRegion" aria-live="polite" aria-atomic="true"></div>
+
+  <script>
+    const SIGNALING_SERVER_URL = 'wss://echowebshare-server.onrender.com';
 
     class SignalingClient {
       constructor(url) {
@@ -664,7 +1659,7 @@ const SIGNALING_SERVER_URL = 'wss://echowebshare-server.onrender.com';
     sharedFilesHeader.addEventListener('click', () => {
       const isOpen = sharedFilesList.classList.toggle('open');
       sharedFilesHeader.setAttribute('aria-expanded', String(isOpen));
-      filesToggleArrow.textContent = isOpen ? '⌄' : '›';
+      filesToggleArrow.textContent = isOpen ? 'v' : '>';
     });
 
     shareBtn.onclick = startSharing;
@@ -735,4 +1730,6 @@ const SIGNALING_SERVER_URL = 'wss://echowebshare-server.onrender.com';
     });
 
     signalingServer.connect();
-  
+  </script>
+</body>
+</html>
