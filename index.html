@@ -929,6 +929,9 @@
           <div class="modal-grid">
             <div class="field-group">
               <h3>Room Controls</h3>
+              <label class="small">Host passphrase
+                <input class="input-field" type="password" data-host-passphrase autocomplete="off">
+              </label>
               <div class="controls">
                 <button id="shareBtn" class="btn primary" type="button" disabled>Start Sharing</button>
                 <button id="pauseBtn" class="btn warning" type="button" disabled style="display:none;">Pause</button>
@@ -1282,6 +1285,10 @@
           break;
 
         case 'error':
+          if (localStream && !currentRoom) {
+            stopSharing();
+            openModal('share');
+          }
           notify(data.message || 'Something went wrong.', 'error');
           updateShareState();
           break;
@@ -1317,7 +1324,10 @@
 
         status.style.display = 'none';
 
-        const sent = signalingServer.send(clientId, JSON.stringify({ type: 'create-room' }));
+        const passphrase = document.querySelector('[data-host-passphrase]');
+        const secret = passphrase.value;
+        passphrase.value = '';
+        const sent = signalingServer.send(clientId, JSON.stringify({ type: 'create-room', secret }));
         if (!sent) {
           throw new Error('Could not reach the signaling server.');
         }

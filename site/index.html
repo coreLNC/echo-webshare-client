@@ -312,6 +312,9 @@
       </button>
       <div class="menu-panel" id="panelControls">
         <div class="small">Start or join a room:</div>
+        <label class="small">Host passphrase
+          <input class="input-field" type="password" data-host-passphrase autocomplete="off">
+        </label>
         <div class="controls" style="margin-top:10px;">
           <button id="shareBtn" disabled>🖥️ Start Sharing</button>
           <button id="pauseBtn" disabled style="display:none;">⏸️ Pause</button>
@@ -627,13 +630,15 @@
         break;
 
       case 'error':
+        if (localStream && !currentRoom) stopSharing();
         alert(data.message);
         break;
     }
   });
 
   // Screen Sharing
-  async function startSharing() {
+  async function startSharing(event) {
+    const passphrase = event.currentTarget.closest('.menu-panel').querySelector('[data-host-passphrase]');
     try {
       localStream = await navigator.mediaDevices.getDisplayMedia({
         video: { cursor: 'always' },
@@ -643,7 +648,13 @@
       video.srcObject = localStream;
       status.style.display = 'none';
 
-      signalingServer.send(clientId, JSON.stringify({ type: 'create-room' }));
+      const secret = passphrase.value;
+      passphrase.value = '';
+      if (!signalingServer.send(clientId, JSON.stringify({ type: 'create-room', secret }))) {
+        stopSharing();
+        alert('The signaling server is not connected yet.');
+        return;
+      }
 
       shareBtn.disabled = true;
       stopBtn.disabled = false;
