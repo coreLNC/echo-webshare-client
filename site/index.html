@@ -312,6 +312,9 @@
       </button>
       <div class="menu-panel" id="panelControls">
         <div class="small">Start or join a room:</div>
+        <label class="small">Host passphrase
+          <input class="input-field" type="password" data-host-passphrase autocomplete="off">
+        </label>
         <div class="controls" style="margin-top:10px;">
           <button id="shareBtn" disabled>🖥️ Start Sharing</button>
           <button id="pauseBtn" disabled style="display:none;">⏸️ Pause</button>
@@ -352,7 +355,7 @@
 
     <div class="video-container">
       <video id="video" autoplay playsinline muted></video>
-      <div id="status" class="status">No active screen share</div>
+      <div id="status" class="status" aria-live="polite">No active screen share</div>
     </div>
 
     <!-- Shared Media Container -->
@@ -387,6 +390,7 @@
   <div style="margin-top: 6px; font-size: 10px;">Echo WebShare © 2025</div>
 </div>
 
+<script src="./webrtc.js"></script>
 <script>
   // =============================================
   // CONFIGURATION - Your Server URL
@@ -433,14 +437,19 @@
 
     on(event, cb) { (this.listeners[event] ||= []).push(cb); }
     _emit(event, ...args) { (this.listeners[event] || []).forEach(cb => cb(...args)); }
-    send(id, msg) { if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(msg); }
+    isOpen() { return this.ws?.readyState === WebSocket.OPEN; }
+    send(id, msg) {
+      if (!this.isOpen()) return false;
+      this.ws.send(msg);
+      return true;
+    }
   }
 
   const signalingServer = new SignalingClient(SIGNALING_SERVER_URL);
   const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
   let clientId = null, localStream = null, currentRoom = null;
-  let peerConnections = {}, viewerCount = 0, isPaused = false;
+  let viewerCount = 0, isPaused = false;
 
   // DOM Elements
   const $ = id => document.getElementById(id);
@@ -529,6 +538,16 @@
   });
 
   // Connect to signaling server
+  const peers = new ScreenSharePeers(
+    rtcConfig,
+    message => signalingServer.send(clientId, JSON.stringify(message)),
+    () => {
+      status.textContent = localStream
+        ? 'A viewer could not connect to your stream.'
+        : 'Could not connect to the stream. Leave the room and rejoin to try again.';
+      status.style.display = 'grid';
+    }
+  );
   signalingServer.connect();
 
   signalingServer.on('open', (id) => {
@@ -564,24 +583,31 @@
       case 'viewer-joined':
         viewerCount++;
         viewerCountEl.textContent = viewerCount;
-        await createOffer(data.viewerId);
+        if (localStream) await peers.offer(data.viewerId, localStream);
         break;
 
       case 'joined-room':
         currentRoom = data.roomCode;
         status.textContent = 'Joined room — waiting for host...';
+        stopBtn.disabled = false;
+        updateMobileControls();
         break;
 
       case 'offer':
-        await handleOffer(data.from, data.offer);
+        video.muted = false;
+        status.textContent = 'Connecting to the stream...';
+        status.style.display = 'grid';
+        await peers.answer(data.from, data.offer, (stream, isCurrent) => {
+          playRemoteScreen(video, status, stream, isCurrent);
+        });
         break;
 
       case 'answer':
-        await handleAnswer(data.from, data.answer);
+        await peers.acceptAnswer(data.from, data.answer);
         break;
 
       case 'ice-candidate':
-        await handleIceCandidate(data.from, data.candidate);
+        await peers.receiveIce(data.from, data.candidate);
         break;
 
       case 'host-left':
@@ -592,10 +618,7 @@
       case 'viewer-left':
         viewerCount = Math.max(0, viewerCount - 1);
         viewerCountEl.textContent = viewerCount;
-        if (peerConnections[data.viewerId]) {
-          peerConnections[data.viewerId].close();
-          delete peerConnections[data.viewerId];
-        }
+        peers.remove(data.viewerId);
         break;
 
       case 'chat':
@@ -607,22 +630,31 @@
         break;
 
       case 'error':
+        if (localStream && !currentRoom) stopSharing();
         alert(data.message);
         break;
     }
   });
 
   // Screen Sharing
-  async function startSharing() {
+  async function startSharing(event) {
+    const passphrase = event.currentTarget.closest('.menu-panel').querySelector('[data-host-passphrase]');
     try {
       localStream = await navigator.mediaDevices.getDisplayMedia({
         video: { cursor: 'always' },
         audio: true
       });
+      video.muted = true;
       video.srcObject = localStream;
       status.style.display = 'none';
 
-      signalingServer.send(clientId, JSON.stringify({ type: 'create-room' }));
+      const secret = passphrase.value;
+      passphrase.value = '';
+      if (!signalingServer.send(clientId, JSON.stringify({ type: 'create-room', secret }))) {
+        stopSharing();
+        alert('The signaling server is not connected yet.');
+        return;
+      }
 
       shareBtn.disabled = true;
       stopBtn.disabled = false;
@@ -661,13 +693,12 @@
 
   function stopSharing() {
     if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
-    Object.values(peerConnections).forEach(pc => pc.close());
-    peerConnections = {};
     if (currentRoom) signalingServer.send(clientId, JSON.stringify({ type: 'leave-room' }));
     cleanup();
   }
 
   function cleanup() {
+    peers.clear();
     currentRoom = null;
     viewerCount = 0;
     isPaused = false;
@@ -683,68 +714,15 @@
     resumeBtn.disabled = true;
     resumeBtn.style.display = 'none';
     roomInput.disabled = false;
+    joinBtn.disabled = !signalingServer.isOpen();
     status.style.display = 'block';
     status.textContent = 'No active screen share';
     video.srcObject = null;
     publishedDoc.textContent = 'No media shared';
     sharedMediaContainer.classList.remove('active');
     updateMobileControls();
+    updateMobileStatus();
     updateMobileRoomInfo();
-  }
-
-  // WebRTC Functions
-  async function createOffer(viewerId) {
-    const pc = new RTCPeerConnection(rtcConfig);
-    peerConnections[viewerId] = pc;
-
-    if (localStream) {
-      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-    }
-
-    pc.onicecandidate = e => {
-      if (e.candidate) {
-        signalingServer.send(clientId, JSON.stringify({
-          type: 'ice-candidate', candidate: e.candidate, target: viewerId
-        }));
-      }
-    };
-
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    signalingServer.send(clientId, JSON.stringify({ type: 'offer', offer, target: viewerId }));
-  }
-
-  async function handleOffer(hostId, offer) {
-    const pc = new RTCPeerConnection(rtcConfig);
-    peerConnections[hostId] = pc;
-
-    pc.ontrack = e => {
-      video.srcObject = e.streams[0];
-      status.style.display = 'none';
-    };
-
-    pc.onicecandidate = e => {
-      if (e.candidate) {
-        signalingServer.send(clientId, JSON.stringify({
-          type: 'ice-candidate', candidate: e.candidate, target: hostId
-        }));
-      }
-    };
-
-    await pc.setRemoteDescription(new RTCSessionDescription(offer));
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-    signalingServer.send(clientId, JSON.stringify({ type: 'answer', answer, target: hostId }));
-  }
-
-  async function handleAnswer(viewerId, answer) {
-    const pc = peerConnections[viewerId];
-    if (pc) await pc.setRemoteDescription(new RTCSessionDescription(answer));
-  }
-
-  async function handleIceCandidate(peerId, candidate) {
-    const pc = peerConnections[peerId];
-    if (pc) await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
   }
 
   // Join Room
