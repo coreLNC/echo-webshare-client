@@ -925,6 +925,8 @@
           <div class="modal-grid">
             <div class="field-group">
               <h3>Room Controls</h3>
+              <label for="hostSecretInput">Host passcode</label>
+              <input id="hostSecretInput" class="input-field" type="password" placeholder="Needed to start a room" autocomplete="off" style="margin-bottom:12px;">
               <div class="controls">
                 <button id="shareBtn" class="btn primary" type="button" disabled>Start Sharing</button>
                 <button id="pauseBtn" class="btn warning" type="button" disabled style="display:none;">Pause</button>
@@ -1065,7 +1067,55 @@
     }
 
     const signalingServer = new SignalingClient(SIGNALING_SERVER_URL);
-    const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+    // STUN is always available. TURN credentials are fetched from the server
+    // after joining a room and used when they arrive in time.
+    const STUN_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
+    const TURN_WAIT_MS = 3000;
+    let turnServers = null;
+    let turnExpiresAt = 0;
+    let turnRequestPending = false;
+    let turnWaiters = [];
+    let pendingCandidates = {};
+
+    function turnIsFresh() {
+      return Boolean(turnServers) && Date.now() < turnExpiresAt - 30000;
+    }
+
+    function buildRtcConfig() {
+      return { iceServers: turnIsFresh() ? [...STUN_SERVERS, ...turnServers] : STUN_SERVERS };
+    }
+
+    function settleTurnWaiters() {
+      const waiters = turnWaiters;
+      turnWaiters = [];
+      waiters.forEach(fn => fn());
+    }
+
+    function requestTurnCredentials() {
+      if (turnIsFresh() || turnRequestPending || !currentRoom) return;
+      if (signalingServer.send(clientId, JSON.stringify({ type: 'request-turn-credentials' }))) {
+        turnRequestPending = true;
+        setTimeout(() => { turnRequestPending = false; }, 8000);
+      }
+    }
+
+    // Resolves with a config containing TURN if credentials arrive within
+    // TURN_WAIT_MS, otherwise with STUN only, so a TURN outage never blocks sharing.
+    function getRtcConfig() {
+      if (turnIsFresh()) return Promise.resolve(buildRtcConfig());
+      requestTurnCredentials();
+      return new Promise(resolve => {
+        const done = () => {
+          clearTimeout(timer);
+          resolve(buildRtcConfig());
+        };
+        const timer = setTimeout(() => {
+          turnWaiters = turnWaiters.filter(fn => fn !== done);
+          resolve(buildRtcConfig());
+        }, TURN_WAIT_MS);
+        turnWaiters.push(done);
+      });
+    }
 
     let clientId = null;
     let localStream = null;
@@ -1111,6 +1161,14 @@
     const miniBtn = $('miniBtn');
     const controlModal = $('controlModal');
     const toastRegion = $('toastRegion');
+    const hostSecretInput = $('hostSecretInput');
+
+    try {
+      hostSecretInput.value = sessionStorage.getItem('echoHostSecret') || '';
+    } catch {}
+    hostSecretInput.addEventListener('input', () => {
+      try { sessionStorage.setItem('echoHostSecret', hostSecretInput.value); } catch {}
+    });
 
     function notify(message, type = 'info') {
       const toast = document.createElement('div');
@@ -1185,6 +1243,7 @@
 
     signalingServer.on('close', () => {
       setConnection('Reconnecting...', false);
+      turnRequestPending = false;
       shareBtn.disabled = true;
       joinBtn.disabled = true;
     });
@@ -1210,6 +1269,7 @@
           copyBtn.style.display = 'inline-flex';
           viewersEl.style.display = 'inline-flex';
           notify(`Room ${currentRoom} is ready.`, 'success');
+          requestTurnCredentials();
           break;
 
         case 'viewer-joined':
@@ -1226,6 +1286,7 @@
           shareBtn.disabled = true;
           updateJoinState();
           notify(`Joined room ${currentRoom}.`, 'success');
+          requestTurnCredentials();
           break;
 
         case 'offer':
@@ -1262,8 +1323,25 @@
           displaySharedMedia(data.media);
           break;
 
+        case 'turn-credentials':
+          turnRequestPending = false;
+          if (Array.isArray(data.iceServers) && data.iceServers.length) {
+            turnServers = data.iceServers;
+            turnExpiresAt = Date.now() + (Number(data.ttlSeconds) || 600) * 1000;
+          }
+          settleTurnWaiters();
+          break;
+
+        case 'turn-credentials-error':
+          turnRequestPending = false;
+          console.warn('TURN unavailable, using STUN only:', data.message);
+          settleTurnWaiters();
+          break;
+
         case 'error':
           notify(data.message || 'Something went wrong.', 'error');
+          // Room creation was refused (e.g. wrong passcode): stop the screen capture.
+          if (localStream && !currentRoom) stopSharing();
           updateShareState();
           break;
       }
@@ -1298,7 +1376,7 @@
 
         status.style.display = 'none';
 
-        const sent = signalingServer.send(clientId, JSON.stringify({ type: 'create-room' }));
+        const sent = signalingServer.send(clientId, JSON.stringify({ type: 'create-room', secret: hostSecretInput.value }));
         if (!sent) {
           throw new Error('Could not reach the signaling server.');
         }
@@ -1365,6 +1443,9 @@
     }
 
     function cleanup() {
+      Object.values(peerConnections).forEach(pc => pc.close());
+      peerConnections = {};
+      pendingCandidates = {};
       currentRoom = null;
       viewerCount = 0;
       isPaused = false;
@@ -1390,7 +1471,8 @@
     }
 
     async function createOffer(viewerId) {
-      const pc = new RTCPeerConnection(rtcConfig);
+      const config = await getRtcConfig();
+      const pc = new RTCPeerConnection(config);
       peerConnections[viewerId] = pc;
 
       if (localStream) {
@@ -1413,7 +1495,8 @@
     }
 
     async function handleOffer(hostId, offer) {
-      const pc = new RTCPeerConnection(rtcConfig);
+      const config = await getRtcConfig();
+      const pc = new RTCPeerConnection(config);
       peerConnections[hostId] = pc;
       video.muted = false;
 
@@ -1434,6 +1517,7 @@
       };
 
       await pc.setRemoteDescription(new RTCSessionDescription(offer));
+      await flushCandidates(hostId, pc);
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       signalingServer.send(clientId, JSON.stringify({ type: 'answer', answer, target: hostId }));
@@ -1441,12 +1525,26 @@
 
     async function handleAnswer(viewerId, answer) {
       const pc = peerConnections[viewerId];
-      if (pc) await pc.setRemoteDescription(new RTCSessionDescription(answer));
+      if (pc) {
+        await pc.setRemoteDescription(new RTCSessionDescription(answer));
+        await flushCandidates(viewerId, pc);
+      }
     }
 
     async function handleIceCandidate(peerId, candidate) {
+      if (!candidate) return;
       const pc = peerConnections[peerId];
-      if (pc && candidate) {
+      if (!pc || !pc.remoteDescription) {
+        (pendingCandidates[peerId] ||= []).push(candidate);
+        return;
+      }
+      await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
+    }
+
+    async function flushCandidates(peerId, pc) {
+      const queued = pendingCandidates[peerId] || [];
+      delete pendingCandidates[peerId];
+      for (const candidate of queued) {
         await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
       }
     }
